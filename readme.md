@@ -11,4 +11,4 @@ Skript automaticky vyřeší klíčové závislosti, správnou konfiguraci FQDN 
 Přihlaste se na svůj Debian server jako uživatel `root` a spusťte:
 
 ```bash
-curl -fsSL [https://raw.githubusercontent.com/krioxtindev/debian-proxmox-installer/refs/heads/main/install.sh](https://raw.githubusercontent.com/krioxtindev/debian-proxmox-installer/refs/heads/main/install.sh) | bash
+curl -fsSL https://raw.githubusercontent.com/krioxtindev/debian-proxmox-installer/refs/heads/main/install.sh | bash
