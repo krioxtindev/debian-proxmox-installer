@@ -60,16 +60,16 @@ echo -e "${BLUE}============================================================${NC
 echo -e "${BLUE}           Instalace Proxmox VE na čistý Debian             ${NC}"
 echo -e "${BLUE}============================================================${NC}"
 
-# Detekce distribuce (bookworm / trixie)
+# 0. Detekce distribuce Debianu
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     CODENAME="${VERSION_CODENAME:-bookworm}"
 else
     CODENAME="bookworm"
 fi
-echo -e "Detekovaná verze Debianu: ${GREEN}${CODENAME}${NC}"
+echo -e "Detekovaná distribuce Debianu: ${GREEN}${CODENAME}${NC}"
 
-# 1. Kontrola a oprava /etc/hosts a hostname
+# 1. Kontrola a konfigurace /etc/hosts a hostname
 HOSTNAME=$(hostname)
 IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
 
@@ -78,7 +78,7 @@ if [ -z "$IP" ]; then
 fi
 
 if [ -z "$IP" ]; then
-    echo -e "${RED}[CHYBA] Nepodařilo se zjistit veřejnou IP adresu serveru!${NC}"
+    echo -e "${RED}[CHYBA] Nepodařilo se detekovat veřejnou IP adresu serveru!${NC}"
     exit 1
 fi
 
@@ -86,25 +86,28 @@ FQDN="${HOSTNAME}.localdomain"
 
 echo -e "Detekovaný hostname: ${GREEN}${HOSTNAME}${NC}"
 echo -e "Detekovaná IP:       ${GREEN}${IP}${NC}"
-echo -e "Nastavované FQDN:    ${GREEN}${FQDN}${NC}"
+echo -e "Nastavené FQDN:      ${GREEN}${FQDN}${NC}"
 
-# Záloha a zápis správného formátu do /etc/hosts
+# Odstranění starého pve repo souboru, pokud zbyl z předchozího neúspěšného pokusu
+rm -f /etc/apt/sources.list.d/pve-install-repo.list
+
+# Úprava /etc/hosts
 cp /etc/hosts /etc/hosts.bak
 sed -i "/127\.0\.1\.1/d" /etc/hosts
 sed -i "/$IP/d" /etc/hosts
 echo "$IP $FQDN $HOSTNAME" >> /etc/hosts
 
-echo -e "${GREEN}[OK] /etc/hosts byl úspěšně nakonfigurován pro Proxmox cluster stack.${NC}"
+echo -e "${GREEN}[OK] /etc/hosts nastaven: $IP $FQDN $HOSTNAME${NC}"
 
 confirm_stage "Příprava hostname a hosts"
 
-# 2. Přidání GPG klíče a repozitáře Proxmox VE
-echo -e "\n${BLUE}[1/4] Přidání oficiálního Proxmox repozitáře${NC}"
+# 2. Instalace prerekvizit a stažení PGP klíče PŘED přidáním repozitáře
+echo -e "\n${BLUE}[1/4] Příprava repozitářů a GPG klíčů Proxmox VE${NC}"
 
-run_step "Instalace prerekvizit pro repozitáře" \
+run_step "Instalace základních nástrojů pro správu balíčků" \
   "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates gnupg debconf-utils"
 
-run_step "Stáhnutí Proxmox GPG klíče" \
+run_step "Stažení oficiálního Proxmox GPG klíče" \
   "curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-${CODENAME}.gpg -o /etc/apt/trusted.gpg.d/proxmox-release-${CODENAME}.gpg 2>/dev/null || curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-bookworm.gpg -o /etc/apt/trusted.gpg.d/proxmox-release-${CODENAME}.gpg"
 
 run_step "Přidání Proxmox VE No-Subscription repozitáře" \
@@ -112,13 +115,13 @@ run_step "Přidání Proxmox VE No-Subscription repozitáře" \
 
 confirm_stage "Repozitáře Proxmox VE"
 
-# 3. Aktualizace a instalace Proxmox jádra a balíčků
+# 3. Aktualizace a instalace balíčků Proxmox VE
 echo -e "\n${BLUE}[2/4] Instalace Proxmox jádra a balíčků${NC}"
 
 run_step "Aktualizace seznamu balíčků s novým repozitářem" \
   "apt-get update"
 
-# Přednastavení postfixu, aby instalace nezamrzla v dialogovém okně
+# Tichá konfigurace postfixu proti zablokování instalátoru v dialogovém okně
 echo "postfix postfix/main_mailer_type select Local only" | debconf-set-selections
 echo "postfix postfix/mailname string $FQDN" | debconf-set-selections
 
@@ -127,19 +130,18 @@ run_step "Instalace Proxmox VE balíčků a jádra" \
 
 confirm_stage "Instalace Proxmox VE"
 
-# 4. Bezpečné odstranění původního Debian kernelu a úprava GRUBu
-echo -e "\n${BLUE}[3/4] Odstranění původního Debian jádra a aktualizace zavaděče${NC}"
+# 4. Bezpečné odstranění Debian jádra a aktualizace GRUB
+echo -e "\n${BLUE}[3/4] Odstranění výchozího Debian jádra a aktualizace zavaděče${NC}"
 
-# Maže se pouze čisté Debian jádro (linux-image-amd64), PVE jádro (proxmox-kernel / pve-kernel) zůstane netknuté
-run_step "Odstranění původního balíčku linux-image-amd64" \
-  "apt-get remove -y linux-image-amd64 'linux-image-*-amd64' || true"
+run_step "Odstranění původního debian linux-image jádra" \
+  "apt-get remove -y linux-image-amd64 'linux-image-*-amd64' 2>/dev/null || true"
 
 run_step "Aktualizace zavaděče GRUB" \
   "update-grub"
 
 confirm_stage "Zavaděč a jádro"
 
-# 5. Odstranění enterprise repozitáře (který vyžaduje placenou licenci)
+# 5. Zakázání placeného enterprise repozitáře
 echo -e "\n${BLUE}[4/4] Finalizace konfigurace repozitářů${NC}"
 
 if [ -f /etc/apt/sources.list.d/pve-enterprise.list ]; then
@@ -154,5 +156,5 @@ echo -e "   URL:           ${BLUE}https://${IP}:8006${NC}"
 echo -e "   Přihlášení:    root + vaše systémové heslo"
 echo -e "   Realm:         Linux PAM standard authentication"
 echo -e ""
-echo -e "${YELLOW}DOPORUČENÍ: Pro zavedení nového Proxmox kernelu nyní restartujte systém (reboot).${NC}"
+echo -e "${YELLOW}DOPORUČENÍ: Restartujte server příkazem 'reboot' pro naběhnutí PVE jádra.${NC}"
 echo -e "${GREEN}============================================================${NC}\n"
