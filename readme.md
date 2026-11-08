@@ -1,4 +1,4 @@
-# Debian Proxmox Installer
+# Debian Proxmox Installer ( POUZE DEBIAN 13)
 
 Automatizovaný bash skript pro čistou a bezobslužnou instalaci **Proxmox Virtual Environment (PVE)** na čistý server s operačním systémem **Debian**.
 
